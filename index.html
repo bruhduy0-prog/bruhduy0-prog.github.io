@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>welcome Back</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    background:#141414;
+    overflow:hidden;
+    font-family: 'Arial Black', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+  }
+  #stage {
+    position:relative;
+    width:100%; height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#141414;
+    transition: background-color 0.6s cubic-bezier(.4,0,.2,1), transform 0.09s ease-out;
+    perspective: 900px;
+    overflow:hidden;
+  }
+  #stage.beat-pulse { transform: scale(1.012); }
+
+  .guide-line {
+    position:absolute;
+    background:rgba(255,140,60,0.4);
+    z-index:1;
+  }
+
+  /* ===== Ambient background: các quầng sáng trôi nhẹ tạo chiều sâu ===== */
+  #bgBlobs { position:absolute; inset:0; z-index:0; overflow:hidden; }
+  .blob {
+    position:absolute;
+    border-radius:50%;
+    filter: blur(30px);
+    opacity:0.2;
+    mix-blend-mode:screen;
+    will-change: transform;
+  }
+  .blob1 { width:340px; height:340px; background:radial-gradient(circle,#ff8c3c,transparent 70%); top:-90px; left:-70px; animation: driftA 18s ease-in-out infinite; }
+  .blob2 { width:300px; height:300px; background:radial-gradient(circle,#3d5ad1,transparent 70%); bottom:-70px; right:-50px; animation: driftB 22s ease-in-out infinite; }
+  .blob3 { width:230px; height:230px; background:radial-gradient(circle,#e0563a,transparent 70%); top:42%; left:58%; animation: driftC 26s ease-in-out infinite; }
+  @keyframes driftA { 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(60px,80px) scale(1.15); } }
+  @keyframes driftB { 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(-70px,-50px) scale(1.1); } }
+  @keyframes driftC { 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(-50px,60px) scale(1.2); } }
+
+  /* vignette làm tối viền, dồn mắt vào giữa */
+  #vignette {
+    position:absolute; inset:0; z-index:2; pointer-events:none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
+  }
+
+  /* quầng sáng bật nhẹ theo từng nhịp beat của bài nhạc */
+  #beatGlow {
+    position:absolute; inset:0; z-index:3; pointer-events:none;
+    background: radial-gradient(ellipse at center, rgba(255,255,255,0.10), transparent 65%);
+    opacity:0;
+    transition: opacity 0.09s ease-out;
+  }
+  #beatGlow.pulse { opacity:1; transition: opacity 0.03s ease-out; }
+
+  #lyricLayer {
+    position:relative;
+    z-index:5;
+    width:92%;
+    max-width:640px;
+    height:70%;
+  }
+
+  .line {
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    width:100%;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:center;
+    font-size:clamp(30px, 9vw, 58px);
+    line-height:1.3;
+    color:#fff;
+    font-weight:900;
+    letter-spacing:0.5px;
+    opacity:1;
+  }
+
+  .line.hidden-line { display:none; }
+
+  .char {
+    display:inline-block;
+    position:relative;
+    opacity:0;
+    font-size: calc(1em * var(--fs, 1));
+    color: var(--col, #fff);
+    margin: 0 -0.03em;
+    will-change: transform, opacity;
+  }
+  .char.hero {
+    z-index:3;
+    -webkit-text-stroke: 1.5px rgba(0,0,0,0.35);
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.45));
+  }
+  .char.space { width:0.28em; }
+
+  .accent-block {
+    display:inline-flex;
+    padding:0 0.12em;
+    margin: 0 0.05em;
+  }
+
+  /* ===== mảng màu nền dạng collage (khối chữ nhật / blob / kim cương) đứng sau chữ ===== */
+  .shape {
+    position:absolute;
+    top:50%; left:50%;
+    opacity:0;
+    z-index:-1;
+    pointer-events:none;
+  }
+  .shape.rect    { border-radius:4px; }
+  .shape.blob    { clip-path: polygon(20% 0%, 45% 12%, 65% 2%, 85% 18%, 100% 10%, 90% 35%, 100% 55%, 82% 48%, 88% 78%, 62% 65%, 55% 100%, 40% 80%, 18% 95%, 25% 65%, 0% 72%, 12% 45%, 0% 22%, 22% 28%); }
+  .shape.diamond { border-radius:8px; }
+  @keyframes shapePopIn {
+    0%   { opacity:0; }
+    100% { opacity:var(--op,0.85); }
+  }
+  .shape.show { animation: shapePopIn 0.45s cubic-bezier(.22,1.3,.36,1) forwards; }
+
+  .line-squiggle {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    overflow:visible; z-index:4; pointer-events:none;
+  }
+  .line-squiggle path {
+    fill:none; stroke-linecap:round; stroke-linejoin:round;
+  }
+
+  .line-dot {
+    position:absolute; border-radius:50%; opacity:0; z-index:4; pointer-events:none;
+  }
+  .line-dot.show { animation: shapePopIn 0.35s cubic-bezier(.22,1.4,.4,1) forwards; }
+
+  /* ===== bộ hiệu ứng chữ xuất hiện — mỗi ký tự random 1 kiểu, kịch tính & có "punch" hơn ===== */
+  @keyframes charPunchIn {
+    0%   { opacity:0; transform:scale(0.2) rotate(-8deg); filter:brightness(2.6); }
+    45%  { opacity:1; transform:scale(1.35) rotate(4deg); filter:brightness(1.5); }
+    70%  { transform:scale(0.92) rotate(-2deg); filter:brightness(1); }
+    100% { opacity:1; transform:scale(1) rotate(var(--restrot,0deg)); filter:brightness(1); }
+  }
+  @keyframes charGlitchIn {
+    0%   { opacity:0; transform:translate(-6px,0); text-shadow:-3px 0 #ff2b4d, 3px 0 #2bd9ff; }
+    16%  { opacity:1; transform:translate(4px,0); text-shadow:3px 0 #ff2b4d, -3px 0 #2bd9ff; }
+    32%  { opacity:0.25; transform:translate(-3px,0); text-shadow:none; }
+    48%  { opacity:1; transform:translate(2px,0); text-shadow:-2px 0 #ff2b4d, 2px 0 #2bd9ff; }
+    64%  { opacity:0.4; text-shadow:none; }
+    82%  { opacity:1; transform:translate(0,0); text-shadow:none; }
+    100% { opacity:1; transform:translate(0,0) rotate(var(--restrot,0deg)); text-shadow:none; }
+  }
+  @keyframes charSpinIn {
+    0%   { opacity:0; transform:rotateY(130deg) rotateZ(6deg) scale(0.7); }
+    55%  { opacity:1; transform:rotateY(-18deg) rotateZ(-3deg) scale(1.12); }
+    100% { opacity:1; transform:rotateY(0deg) rotateZ(var(--restrot,0deg)) scale(1); }
+  }
+  @keyframes charDropBounce {
+    0%   { opacity:0; transform:translateY(-220px) scaleY(0.8) scaleX(1.1); }
+    55%  { opacity:1; transform:translateY(14px) scaleY(1.18) scaleX(0.88); }
+    72%  { transform:translateY(-8px) scaleY(0.94) scaleX(1.04); }
+    86%  { transform:translateY(4px) scaleY(1.03) scaleX(0.98); }
+    100% { opacity:1; transform:translateY(0) scaleY(1) scaleX(1) rotate(var(--restrot,0deg)); }
+  }
+  @keyframes charSlideBlur {
+    0%   { opacity:0; transform:translateX(var(--dx,-100px)) skewX(12deg); filter:blur(9px); }
+    50%  { opacity:1; filter:blur(1px); }
+    100% { opacity:1; transform:translateX(0) skewX(0deg) rotate(var(--restrot,0deg)); filter:blur(0px); }
+  }
+  @keyframes charShatter {
+    0%   { opacity:0; transform:translate(var(--sx,0px),var(--sy,0px)) rotate(var(--sr,0deg)) scale(0.4); }
+    55%  { opacity:1; transform:translate(calc(var(--sx,0px) * -0.15),calc(var(--sy,0px) * -0.15)) rotate(calc(var(--sr,0deg) * -0.3)) scale(1.14); }
+    100% { opacity:1; transform:translate(0,0) rotate(var(--restrot,0deg)) scale(1); }
+  }
+  @keyframes charNeonOn {
+    0%   { opacity:0; transform:scale(1.1); text-shadow:none; }
+    8%   { opacity:1; text-shadow:0 0 14px rgba(255,255,255,0.9); }
+    16%  { opacity:0.2; text-shadow:none; }
+    28%  { opacity:1; text-shadow:0 0 20px rgba(255,255,255,0.95); }
+    40%  { opacity:0.3; text-shadow:none; }
+    52%  { opacity:1; transform:scale(1.03); text-shadow:0 0 10px rgba(255,255,255,0.8); }
+    100% { opacity:1; transform:scale(1) rotate(var(--restrot,0deg)); text-shadow:none; }
+  }
+  @keyframes charWobbleZ {
+    0%   { opacity:0; transform:rotate(-140deg) scale(0.3); }
+    55%  { opacity:1; transform:rotate(18deg) scale(1.15); }
+    75%  { transform:rotate(-8deg) scale(0.95); }
+    100% { opacity:1; transform:rotate(var(--restrot,0deg)) scale(1); }
+  }
+
+  @keyframes charRibbon {
+    0%   { opacity:0; transform:translateX(var(--dx,-100px)) skewY(10deg) scaleY(0.4); }
+    50%  { opacity:1; transform:translateX(calc(var(--dx,-100px) * 0.08)) skewY(-4deg) scaleY(1.08); }
+    100% { opacity:1; transform:translateX(0) skewY(0deg) scaleY(1) rotate(var(--restrot,0deg)); }
+  }
+  @keyframes charSpark {
+    0%   { opacity:0; transform:translateY(var(--sy,40px)) scale(0.3); filter:brightness(3) blur(2px); }
+    40%  { opacity:1; transform:translateY(calc(var(--sy,40px) * -0.15)) scale(1.2); filter:brightness(1.6) blur(0px); }
+    70%  { transform:translateY(0) scale(0.94); filter:brightness(1); }
+    100% { opacity:1; transform:translateY(0) scale(1) rotate(var(--restrot,0deg)); filter:brightness(1); }
+  }
+
+  .char-anim-punch    { animation: charPunchIn   0.55s cubic-bezier(.34,1.56,.64,1) forwards; }
+  .char-anim-glitch   { animation: charGlitchIn  0.5s  linear forwards; }
+  .char-anim-spin     { animation: charSpinIn    0.55s cubic-bezier(.34,1.56,.64,1) forwards; }
+  .char-anim-drop     { animation: charDropBounce 0.6s cubic-bezier(.25,.8,.3,1) forwards; }
+  .char-anim-slideblur{ animation: charSlideBlur 0.42s cubic-bezier(.2,.9,.3,1) forwards; }
+  .char-anim-shatter  { animation: charShatter   0.5s  cubic-bezier(.25,.9,.3,1) forwards; }
+  .char-anim-neon     { animation: charNeonOn    0.55s ease-out forwards; }
+  .char-anim-wobble   { animation: charWobbleZ   0.5s  cubic-bezier(.34,1.56,.64,1) forwards; }
+  .char-anim-ribbon   { animation: charRibbon    0.48s cubic-bezier(.22,.9,.32,1) forwards; }
+  .char-anim-spark    { animation: charSpark     0.42s cubic-bezier(.25,.9,.3,1)  forwards; }
+
+  /* ===== STUTTER EFFECT: chữ cái đầu "giật/nháy" lặp lại vài lần trước khi nhảy ra từ đầy đủ ===== */
+  #stutterLayer {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    z-index:6;
+    font-size:clamp(30px, 9vw, 58px);
+    font-weight:900;
+    color:#fff;
+  }
+  .stutter-chunk {
+    display:inline-block;
+    opacity:0;
+  }
+  .stutter-chunk.show {
+    animation: stutterPop 0.18s ease-out forwards;
+  }
+  .stutter-chunk.fade {
+    animation: stutterFade 0.15s ease-in forwards;
+  }
+  @keyframes stutterPop {
+    0%   { opacity:0; transform:scale(0.4) rotate(-6deg); }
+    60%  { opacity:1; transform:scale(1.15) rotate(2deg); }
+    100% { opacity:1; transform:scale(1) rotate(0deg); }
+  }
+  @keyframes stutterFade {
+    0%   { opacity:1; transform:scale(1); }
+    100% { opacity:0; transform:scale(0.6); }
+  }
+  .stutter-final {
+    animation: stutterFinal 0.5s cubic-bezier(.2,1.4,.3,1) forwards;
+  }
+  @keyframes stutterFinal {
+    0%   { opacity:0; transform:scale(0.3) rotate(-10deg); }
+    60%  { opacity:1; transform:scale(1.15) rotate(3deg); }
+    100% { opacity:1; transform:scale(1) rotate(0deg); }
+  }
+
+  /* ===== chuyển cảnh khi câu thoại thoát ra: zoom + blur mạnh hơn để cảm giác "cắt cảnh" ===== */
+  .line.pop-out .char {
+    animation: charExit 0.32s ease-in forwards !important;
+  }
+  @keyframes charExit {
+    0%   { opacity:1; transform:scale(1) translateY(0); filter:blur(0px); }
+    100% { opacity:0; transform:scale(1.25) translateY(-14px); filter:blur(6px); }
+  }
+
+  /* ===== hiệu ứng chuyển cảnh: một vệt sáng "wipe" quét ngang qua khi đổi câu ===== */
+  #sceneFlash {
+    position:absolute; inset:0; z-index:8; pointer-events:none;
+    background: linear-gradient(120deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 50%, rgba(255,255,255,0) 100%);
+    transform: translateX(-120%) skewX(-15deg);
+    opacity:0;
+  }
+  @keyframes sceneWipe {
+    0%   { transform: translateX(-120%) skewX(-15deg); opacity:0; }
+    15%  { opacity:0.9; }
+    50%  { transform: translateX(0%) skewX(-15deg); opacity:0.5; }
+    85%  { opacity:0.12; }
+    100% { transform: translateX(120%) skewX(-15deg); opacity:0; }
+  }
+  .scene-flash-play { animation: sceneWipe 0.5s ease-in-out forwards; }
+
+  #progressWrap {
+    position:absolute;
+    bottom:28px; left:50%; transform:translateX(-50%);
+    width:80%; max-width:520px; height:4px;
+    background:rgba(255,255,255,0.15); border-radius:2px;
+    z-index:10; overflow:hidden;
+  }
+  #progressBar { height:100%; width:0%; background:#fff; border-radius:2px; }
+
+  #tapHint {
+    position:absolute; top:24px; left:50%; transform:translateX(-50%);
+    color:rgba(255,255,255,0.4); font-family:'Helvetica Neue', sans-serif;
+    font-weight:400; font-size:13px; letter-spacing:0.5px; z-index:10;
+  }
+
+  #startOverlay {
+    position:absolute; inset:0; background:#141414;
+    display:flex; align-items:center; justify-content:center;
+    z-index:50; cursor:pointer; flex-direction:column; gap:16px;
+  }
+  #startOverlay .title { color:#fff; font-size:22px; font-weight:900; }
+  #startOverlay .btn {
+    font-family:'Helvetica Neue', sans-serif; color:#fff; border:2px solid #fff;
+    padding:12px 28px; border-radius:30px; font-size:15px; letter-spacing:1px;
+    animation: btnPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes btnPulse {
+    0%,100% { box-shadow:0 0 0 0 rgba(255,255,255,0.25); }
+    50%     { box-shadow:0 0 0 10px rgba(255,255,255,0); }
+  }
+
+  #audioHint {
+    position:absolute; bottom:44px; left:50%; transform:translateX(-50%);
+    max-width:86%; text-align:center;
+    background:rgba(0,0,0,0.75); color:#fff; font-family:'Helvetica Neue', sans-serif;
+    font-weight:400; font-size:12.5px; line-height:1.5; letter-spacing:0.2px;
+    padding:10px 16px; border-radius:10px; z-index:60;
+    display:none;
+  }
+  #audioHint.show { display:block; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .blob { animation:none !important; }
+    #stage.beat-pulse { transform:none !important; }
+    #startOverlay .btn { animation:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="bgBlobs">
+    <div class="blob blob1"></div>
+    <div class="blob blob2"></div>
+    <div class="blob blob3"></div>
+  </div>
+  <div id="vignette"></div>
+  <div id="beatGlow"></div>
+
+  <div id="startOverlay">
+    <div class="title">Welcome Back</div>
+    <div class="btn">▶ Press To Enter</div>
+  </div>
+
+  <div id="tapHint">alexizme541</div>
+
+  <div id="stutterLayer"></div>
+  <div id="lyricLayer"></div>
+
+  <div id="sceneFlash"></div>
+
+  <div id="progressWrap"><div id="progressBar"></div></div>
+  <div id="audioHint"></div>
+</div>
+
+<audio id="bgAudio" preload="auto">
+  <source src="song.mp3" type="audio/mpeg">
+  <source src="https://alex541-juju.github.io/song.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+/* =========================================================
+   ĐIỀN LYRIC CỦA BẠN VÀO ĐÂY.
+   - Mỗi object = 1 câu / 1 cụm hiện trên màn hình cùng lúc.
+   - time: giây bắt đầu (khớp song.mp3), duration: hiện bao lâu.
+   - Các mốc "time" bên dưới đã được canh lại theo đúng beat
+     thật của song.mp3 (phân tích năng lượng/onset của file nhạc),
+     nên câu chữ sẽ "nảy" đúng nhịp thay vì lệch vài chục ms.
+   - text: dùng "|" để tách thành các "chunk" xuống dòng nếu cần,
+     hoặc để nguyên 1 chuỗi — code sẽ tự tách TỪNG KÝ TỰ và
+     random hướng bay cho từng ký tự (trái/phải/trên/dưới/zoom/flip).
+   - accent (tuỳ chọn): mảng các từ muốn tô nền màu, vd:
+        accent: [{ word:"ABC", color:"#e0563a" }]
+========================================================= */
+const LYRICS = [
+  // === INTRO: Stutter "Ba- Ba- Ba- Baby" ===
+  // 0.0 - 1.2s: Hiệu ứng stutter intro
+
+  // === CHORUS 1 (bắt đầu ~1.3s) ===
+  { time: 1.30, duration: 1.45, bg:"#1c1c1c",
+    text: `Baby 我们的感情好像跳楼机`,
+    accent: [{ word:"跳楼机", color:"#e0563a" }] },
+
+  { time: 2.75, duration: 1.55, bg:"#171717",
+    text: `让我突然地升空又急速落地` },
+
+  { time: 4.30, duration: 1.80, bg:"#141414",
+    text: `你带给我一场疯狂` },
+
+  { time: 6.10, duration: 2.20, bg:"#151515",
+    text: `劫后余生好难呼吸` },
+
+  { time: 8.30, duration: 2.40, bg:"#171717",
+    text: `那天的天气难得放晴` },
+
+  { time: 10.70, duration: 2.30, bg:"#141414",
+    text: `你说的话却把我困在雨季` },
+
+  { time: 13.00, duration: 1.60, bg:"#191919",
+    text: `其实你不是不爱了吧` },
+
+  { time: 14.60, duration: 1.80, bg:"#171717",
+    text: `只是有些摩擦没处理` },
+
+  { time: 16.40, duration: 1.50, bg:"#141414",
+    text: `怎么你闭口不语` },
+
+  { time: 17.90, duration: 1.60, bg:"#191919",
+    text: `是不是我正好` },
+
+  { time: 19.50, duration: 1.50, bg:"#141414",
+    text: `说中你的心` },
+
+  { time: 21.00, duration: 1.80, bg:"#171717",
+    text: `就承认还是在意吧` },
+
+  { time: 22.80, duration: 2.20, bg:"#141414",
+    text: `哪怕骗骗我也可以` },
+
+  // === OUTRO (kết thúc nhẹ nhàng) ===
+  { time: 25.00, duration: 2.50, bg:"#0a0a0a",
+    text: `...` },
+];
+
+const BEAT_ONSETS = [
+  0.26, 0.44, 0.65, 0.86, 1.02, 1.25, 1.44, 1.65, 2.02, 2.21,
+  2.44, 2.60, 2.86, 3.07, 3.23, 3.62, 3.86, 4.06, 4.27, 4.44,
+  4.85, 5.25, 5.62, 5.83, 6.01, 6.25, 6.46, 6.85, 7.06, 7.25,
+  7.45, 7.64, 7.80, 8.03, 8.34, 8.64, 8.80, 9.03, 9.22, 9.43,
+  9.65, 9.88, 10.12, 10.35, 10.56, 10.78, 11.02, 11.26, 11.44, 11.66,
+  11.80, 11.96, 12.25, 12.50, 12.70, 13.26, 13.62, 14.14, 14.36, 14.69,
+  14.95, 15.22, 15.48, 15.75, 16.05, 16.35, 16.74, 17.05, 17.30, 17.55,
+  17.90, 18.20, 18.50, 18.79, 19.10, 19.40, 19.70, 20.00, 20.30, 20.64,
+  20.95, 21.25, 21.55, 21.85, 22.15, 22.49, 22.80, 23.10, 23.40, 23.70,
+  24.00, 24.24, 24.55, 24.85, 25.15, 25.45, 25.75, 26.05, 26.35, 26.65
+];
+
+const STUTTER_CONFIG = {
+  letter: "Ba-",
+  repeats: 3,
+  beatMs: 280,
+  finalWord: "Baby",
+  startTime: 0.15,
+  holdAfter: 0.9,
+};
+
+function runStutterIntro(cfg){
+  const layer = document.getElementById('stutterLayer');
+  const startMs = cfg.startTime * 1000;
+
+  for (let i = 0; i < cfg.repeats; i++) {
+    const showAt = startMs + i * cfg.beatMs;
+    const hideAt = showAt + cfg.beatMs * 0.7;
+
+    setTimeout(() => {
+      layer.innerHTML = `<span class="stutter-chunk show">${cfg.letter}</span>`;
+    }, showAt);
+
+    setTimeout(() => {
+      const el = layer.querySelector('.stutter-chunk');
+      if (el) el.classList.add('fade');
+    }, hideAt);
+  }
+
+  const finalAt = startMs + cfg.repeats * cfg.beatMs;
+  setTimeout(() => {
+    layer.innerHTML = `<span class="stutter-chunk stutter-final">${cfg.finalWord}</span>`;
+    triggerSceneFlash(); // vệt sáng quét khi "Baby" bung ra — nhấn nhá khoảnh khắc mở đầu
+  }, finalAt);
+
+  const clearAt = finalAt + cfg.holdAfter * 1000;
+  setTimeout(() => {
+    layer.innerHTML = '';
+  }, clearAt);
+}
+
+const TOTAL_DURATION = LYRICS.reduce((m,l)=>Math.max(m, l.time+l.duration), 0) + 0.5;
+
+const lyricLayer = document.getElementById('lyricLayer');
+const stage = document.getElementById('stage');
+const progressBar = document.getElementById('progressBar');
+const startOverlay = document.getElementById('startOverlay');
+const audio = document.getElementById('bgAudio');
+const beatGlow = document.getElementById('beatGlow');
+const sceneFlash = document.getElementById('sceneFlash');
+const audioHint = document.getElementById('audioHint');
+
+function showAudioHint(msg){
+  audioHint.textContent = msg;
+  audioHint.classList.add('show');
+}
+
+let startTs = null;
+
+const CHAR_ANIMS = ['char-anim-punch','char-anim-glitch','char-anim-spin','char-anim-drop','char-anim-slideblur','char-anim-shatter','char-anim-neon','char-anim-wobble','char-anim-ribbon','char-anim-spark'];
+
+// pseudo-random ổn định theo seed (không đổi lung tung mỗi lần load)
+function rand01(n){ const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); }
+
+// bảng màu + đường nguệch ngoạc dùng để dựng "collage" phía sau mỗi câu,
+// giống phong cách video edit: khối màu + blob + đường vẽ tay
+const PALETTES = [
+  ['#ff8c3c', '#274472', '#e0563a'],
+  ['#29c4c9', '#28345c', '#ff2b8f'],
+  ['#ffd23c', '#3d5ad1', '#ff4d4d'],
+  ['#7ee7d8', '#4b2e83', '#ff8c3c'],
+  ['#ff5da2', '#1f6f6b', '#ffd23c'],
+];
+const SQUIGGLES = [
+  'M0,80 C40,20 80,140 120,70 S200,10 240,90 S280,130 300,60',
+  'M0,40 C50,120 90,10 140,80 S220,150 260,60 S300,20 300,20',
+  'M0,110 C60,30 100,150 150,70 C200,10 240,130 300,50',
+];
+
+function pickAnim(seed){
+  // pseudo-random nhưng ổn định theo vị trí, để mỗi lần load không đổi lung tung
+  return CHAR_ANIMS[seed % CHAR_ANIMS.length];
+}
+
+// Kích hoạt vệt sáng "wipe" quét ngang qua màn hình — dùng làm hiệu ứng chuyển cảnh
+function triggerSceneFlash(){
+  sceneFlash.classList.remove('scene-flash-play');
+  void sceneFlash.offsetWidth; // ép reflow để có thể chạy lại animation liên tiếp
+  sceneFlash.classList.add('scene-flash-play');
+}
+
+// Lên lịch chớp sáng + phóng to nhẹ toàn khung hình đúng theo từng nhịp nhạc thật
+function scheduleBeatPulses(){
+  BEAT_ONSETS.forEach(t => {
+    setTimeout(() => {
+      stage.classList.add('beat-pulse');
+      beatGlow.classList.add('pulse');
+      setTimeout(() => {
+        stage.classList.remove('beat-pulse');
+        beatGlow.classList.remove('pulse');
+      }, 90);
+    }, t * 1000);
+  });
+}
+
+// Tách text thành mảng { char, isAccent, accentColor }
+function buildCharList(l){
+  let text = l.text;
+  let accentRanges = []; // {start, end, color}
+
+  if (l.accent) {
+    l.accent.forEach(a => {
+      let idx = text.indexOf(a.word);
+      if (idx !== -1) {
+        accentRanges.push({ start: idx, end: idx + a.word.length, color: a.color });
+      }
+    });
+  }
+
+  const chars = [];
+  for (let i = 0; i < text.length; i++) {
+    const range = accentRanges.find(r => i >= r.start && i < r.end);
+    chars.push({
+      ch: text[i],
+      accentColor: range ? range.color : null,
+      accentStart: range && i === range.start,
+      accentEnd: range && i === range.end - 1,
+    });
+  }
+  return chars;
+}
+
+// Dựng 2-3 khối màu (rect/blob/diamond) phía sau câu chữ, giống nền collage trong ảnh mẫu.
+// Kích thước tính theo "em" (ăn theo cỡ chữ của dòng đó, tự co giãn theo màn hình).
+// Vị trí (offx/offy) được LƯU LẠI dưới dạng data-attribute, và sẽ được ghim vào đúng
+// vị trí chữ "hero" thật của dòng đó khi dòng hiện ra (xem trong scheduleLine),
+// thay vì rải ngẫu nhiên theo % màn hình như trước — nên khối màu sẽ "ôm" sát chữ.
+function buildShapes(lineDiv, li, palette){
+  const specs = [
+    { type:'rect',    w: 2.4 + rand01(li*2.1+1)*1.1, h: 3.2 + rand01(li*3.3+2)*1.1, offx: -1.6 + rand01(li*1.7+3)*1.1, offy: -0.35 + rand01(li*4.1+4)*0.7, rot: -8 + rand01(li*5.3+5)*16, op:0.92 },
+    { type:'blob',    w: 2.4 + rand01(li*6.1+6)*0.9, h: 2.4 + rand01(li*7.3+7)*0.9, offx:  0.7 + rand01(li*8.1+8)*1.1, offy:  0.1 + rand01(li*9.3+9)*0.7, rot: -12 + rand01(li*2.9+10)*24, op:0.8 },
+  ];
+  if (li % 2 === 0) {
+    specs.push({ type:'diamond', w: 0.85 + rand01(li*3.7+11)*0.4, h: 0.85 + rand01(li*4.9+12)*0.4, offx: 1.75 + rand01(li*5.1+13)*0.75, offy: -1.05 + rand01(li*6.3+14)*0.65, rot: 45, op:0.88 });
+  }
+  specs.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'shape ' + s.type;
+    el.style.width = s.w + 'em';
+    el.style.height = s.h + 'em';
+    el.style.background = palette[i % palette.length];
+    el.style.setProperty('--op', s.op);
+    el.style.transform = `translate(-50%,-50%) rotate(${s.rot.toFixed(1)}deg)`;
+    el.dataset.offx = s.offx.toFixed(2);
+    el.dataset.offy = s.offy.toFixed(2);
+    lineDiv.appendChild(el);
+  });
+}
+
+// Vẽ 1 đường nguệch ngoạc quét qua câu chữ (kiểu bút vẽ tay trong video edit)
+function buildSquiggle(lineDiv, li, palette){
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'line-squiggle');
+  svg.setAttribute('viewBox', '0 0 300 160');
+  svg.setAttribute('width', '92vw');
+  svg.setAttribute('height', '32vh');
+  svg.style.transform = `translate(-50%,-50%) rotate(${(-6 + rand01(li*7.7+20)*12).toFixed(1)}deg)`;
+
+  const path = document.createElementNS(svgNS, 'path');
+  path.setAttribute('d', SQUIGGLES[li % SQUIGGLES.length]);
+  path.setAttribute('stroke', palette[2] || '#fff');
+  path.setAttribute('stroke-width', 3.5);
+  svg.appendChild(path);
+  lineDiv.appendChild(svg);
+
+  const len = path.getTotalLength();
+  path.style.strokeDasharray = len;
+  path.style.strokeDashoffset = len;
+  path.style.transition = 'stroke-dashoffset 0.6s cubic-bezier(.4,0,.2,1)';
+  return path;
+}
+
+// Chấm tròn nhỏ điểm nhấn (giống chấm đỏ trong ảnh mẫu) — ghim gần chữ hero khi hiện ra
+function buildDot(lineDiv, li, palette){
+  const dot = document.createElement('div');
+  dot.className = 'line-dot';
+  const size = 12 + rand01(li*9.9+30)*10;
+  dot.style.width = size + 'px';
+  dot.style.height = size + 'px';
+  dot.style.background = palette[2] || '#ff4d4d';
+  dot.style.transform = 'translate(-50%,-50%)';
+  const offx = 1.9 + rand01(li*3.3+31)*0.9;
+  const offy = -0.9 + rand01(li*4.4+32)*0.7;
+  dot.dataset.offx = offx.toFixed(2);
+  dot.dataset.offy = offy.toFixed(2);
+  lineDiv.appendChild(dot);
+  return dot;
+}
+
+function buildLineElements(){
+  LYRICS.forEach((l, li) => {
+    const lineDiv = document.createElement('div');
+    lineDiv.className = 'line hidden-line';
+    lineDiv.id = 'line-' + li;
+
+    const chars = buildCharList(l);
+    let openAccent = false;
+    let seed = li * 7; // seed khác nhau mỗi câu để hướng bay đa dạng
+    const palette = PALETTES[li % PALETTES.length];
+
+    // dựng nền collage trước (z-index âm nên sẽ nằm sau chữ)
+    buildShapes(lineDiv, li, palette);
+    buildSquiggle(lineDiv, li, palette);
+    buildDot(lineDiv, li, palette);
+
+    // chọn 1 ký tự "hero" để phóng to + tô màu nổi bật, né ký tự trắng/space và ký tự đã có accent riêng
+    let heroIdx = -1;
+    if (chars.length > 0) {
+      const nonSpace = chars.map((c,i)=>i).filter(i => chars[i].ch !== ' ' && !chars[i].accentColor);
+      if (nonSpace.length > 0) {
+        heroIdx = nonSpace[Math.floor(rand01(li*11.3+40) * nonSpace.length)];
+      }
+    }
+
+    chars.forEach((c, ci) => {
+      if (c.accentStart) {
+        const span = document.createElement('span');
+        span.className = 'accent-block';
+        span.style.background = c.accentColor;
+        span.dataset.open = 'true';
+        lineDiv.appendChild(span);
+        openAccent = span;
+      }
+
+      const charSpan = document.createElement('span');
+      const isHero = ci === heroIdx;
+      charSpan.className = 'char' + (c.ch === ' ' ? ' space' : '') + (isHero ? ' hero' : '');
+      charSpan.textContent = c.ch === ' ' ? '\u00A0' : c.ch;
+      charSpan.dataset.anim = pickAnim(seed + ci);
+
+      // mỗi ký tự có hướng bay/vỡ riêng (dùng cho charSlideBlur & charShatter),
+      // ổn định theo vị trí nhưng khác nhau giữa các ký tự
+      const n = seed + ci;
+      const dxDir = rand01(n * 1.3 + 0.11) > 0.5 ? 1 : -1;
+      const dx = dxDir * (90 + rand01(n * 2.7 + 0.53) * 90);   // ±90..180px
+      const sx = (rand01(n * 3.1 + 0.77) - 0.5) * 260;          // -130..130px
+      const sy = (rand01(n * 4.4 + 0.31) - 0.5) * 200;          // -100..100px
+      const sr = (rand01(n * 5.9 + 0.19) - 0.5) * 100;          // -50..50deg
+      const restrot = (rand01(n * 8.8 + 0.9) - 0.5) * 16;       // -8..8deg — nghiêng nhẹ khi đứng yên
+      charSpan.style.setProperty('--dx', dx.toFixed(1) + 'px');
+      charSpan.style.setProperty('--sx', sx.toFixed(1) + 'px');
+      charSpan.style.setProperty('--sy', sy.toFixed(1) + 'px');
+      charSpan.style.setProperty('--sr', sr.toFixed(1) + 'deg');
+      charSpan.style.setProperty('--restrot', restrot.toFixed(1) + 'deg');
+
+      // cỡ chữ + màu riêng cho từng ký tự — tạo cảm giác typography to nhỏ lộn xộn
+      if (isHero) {
+        charSpan.style.setProperty('--fs', (2.15 + rand01(n * 9.9 + 1) * 0.45).toFixed(2));
+        charSpan.style.setProperty('--col', palette[0]);
+      } else if (!c.accentColor && c.ch !== ' ') {
+        const fs = 0.8 + rand01(n * 6.1 + 0.4) * 0.55; // 0.8 - 1.35
+        charSpan.style.setProperty('--fs', fs.toFixed(2));
+        // ~1/3 số ký tự được tô màu accent thay vì trắng, còn lại giữ trắng cho dễ đọc
+        if (rand01(n * 7.3 + 0.6) > 0.7) {
+          charSpan.style.setProperty('--col', palette[(ci) % palette.length]);
+        }
+      }
+
+      // stagger nhanh hơn (38ms) + jitter nhẹ để nhịp bay không đều đều máy móc
+      const jitter = Math.round((rand01(n * 6.6 + 2.2) - 0.5) * 18); // -9..9ms
+      charSpan.dataset.delay = Math.max(0, ci * 38 + jitter);
+
+      if (openAccent) {
+        openAccent.appendChild(charSpan);
+      } else {
+        lineDiv.appendChild(charSpan);
+      }
+
+      if (c.accentEnd) {
+        openAccent = false;
+      }
+    });
+
+    lyricLayer.appendChild(lineDiv);
+  });
+}
+
+function scheduleLine(l, li){
+  const el = document.getElementById('line-' + li);
+  const inMs = l.time * 1000;
+  const outMs = (l.time + l.duration) * 1000;
+  const chars = el.querySelectorAll('.char');
+
+  // vệt sáng chuyển cảnh nổ ra một nhịp ngay trước khi câu mới xuất hiện
+  setTimeout(() => {
+    triggerSceneFlash();
+  }, Math.max(0, inMs - 90));
+
+  const shapes = el.querySelectorAll('.shape');
+  const dot = el.querySelector('.line-dot');
+  const squigglePath = el.querySelector('.line-squiggle path');
+
+  setTimeout(() => {
+    stage.style.backgroundColor = l.bg;
+    el.classList.remove('hidden-line');
+    el.classList.remove('pop-out');
+
+    // đợi 1 khung hình để dòng có layout thật, rồi đo vị trí chữ nổi bật
+    // (accent-block nếu dòng có khai báo riêng, không thì chữ "hero" tự chọn)
+    // để ghim khối màu/blob/chấm bám sát đúng chỗ chữ đó thay vì lơ lửng giữa màn hình
+    requestAnimationFrame(() => {
+      const anchorEl = el.querySelector('.accent-block') || el.querySelector('.char.hero');
+      if (anchorEl) {
+        const lineRect = el.getBoundingClientRect();
+        const anchorRect = anchorEl.getBoundingClientRect();
+        const emPx = parseFloat(getComputedStyle(el).fontSize) || 40;
+        const cx = anchorRect.left + anchorRect.width / 2 - lineRect.left;
+        const cy = anchorRect.top + anchorRect.height / 2 - lineRect.top;
+        shapes.forEach(s => {
+          const offx = parseFloat(s.dataset.offx || '0') * emPx;
+          const offy = parseFloat(s.dataset.offy || '0') * emPx;
+          s.style.left = (cx + offx) + 'px';
+          s.style.top = (cy + offy) + 'px';
+        });
+        if (dot) {
+          const offx = parseFloat(dot.dataset.offx || '0') * emPx;
+          const offy = parseFloat(dot.dataset.offy || '0') * emPx;
+          dot.style.left = (cx + offx) + 'px';
+          dot.style.top = (cy + offy) + 'px';
+        }
+      }
+
+      // nền collage (khối màu + chấm) bung ra trước chữ 1 nhịp nhỏ
+      shapes.forEach(s => s.classList.add('show'));
+      if (dot) dot.classList.add('show');
+      if (squigglePath) squigglePath.style.strokeDashoffset = '0';
+
+      chars.forEach(c => {
+        const anim = c.dataset.anim;
+        const delay = parseInt(c.dataset.delay, 10);
+        c.style.opacity = '0';
+        setTimeout(() => {
+          c.classList.add(anim);
+        }, delay);
+      });
+    });
+  }, inMs);
+
+  setTimeout(() => {
+    el.classList.add('pop-out');
+  }, outMs);
+
+  setTimeout(() => {
+    el.classList.add('hidden-line');
+    chars.forEach(c => {
+      CHAR_ANIMS.forEach(a => c.classList.remove(a));
+      c.classList.remove('pop-out');
+      c.style.opacity = '0';
+    });
+    shapes.forEach(s => s.classList.remove('show'));
+    if (dot) dot.classList.remove('show');
+    if (squigglePath) squigglePath.style.strokeDashoffset = squigglePath.getTotalLength();
+  }, outMs + 320);
+}
+
+function tick(ts){
+  if (!startTs) startTs = ts;
+  const elapsed = (ts - startTs) / 1000;
+  const pct = Math.min(100, (elapsed / TOTAL_DURATION) * 100);
+  progressBar.style.width = pct + '%';
+  if (elapsed < TOTAL_DURATION) {
+    requestAnimationFrame(tick);
+  }
+}
+
+function playSequence(){
+  runStutterIntro(STUTTER_CONFIG);
+  buildLineElements();
+  LYRICS.forEach(scheduleLine);
+  scheduleBeatPulses();
+  requestAnimationFrame(tick);
+  audio.currentTime = 0;
+  audio.play().catch(() => {
+    showAudioHint('⚠️ Không phát được nhạc. Kiểm tra: file "song.mp3" phải nằm CÙNG THƯ MỤC với file html này, và mở file html bằng trình duyệt thật (Chrome/Safari) — không mở qua app xem file/preview vì các app đó thường không đọc được file nhạc đi kèm.');
+  });
+}
+
+audio.addEventListener('error', () => {
+  showAudioHint('⚠️ Không tìm thấy hoặc không đọc được "song.mp3". Hãy đặt file nhạc cùng thư mục với file html, rồi mở bằng Chrome/Safari.');
+});
+
+startOverlay.addEventListener('click', () => {
+  startOverlay.style.display = 'none';
+  playSequence();
+});
+</script>
+</body>
+</html>
